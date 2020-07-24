@@ -15,8 +15,8 @@ from pypcd import pypcd
 
 # from visualization import plot_3d_points, visualize_points_overlay
 
-sys.path.append('/home/markvandermerwe/catkin_ws/src/ll4ma_3d_reconstruction/src/data_generation/')
-from object_cloud import process_object_cloud
+#sys.path.append('/home/markvandermerwe/catkin_ws/src/ll4ma_3d_reconstruction/src/data_generation/')
+from data_generation.object_cloud import process_object_cloud
 # from object_frame import find_object_frame
 
 _POINT_CLOUD_SIZE = 1000
@@ -28,7 +28,7 @@ def get_sdf_dataset(tffiles, batch_size=32, sdf_count=128):
     '''
 
     dataset = tf.data.TFRecordDataset(tffiles)
-    
+
     # Setup parsing of objects.
     sdf_feature_description = {
         'point_clouds': tf.FixedLenFeature([], tf.string),
@@ -50,7 +50,7 @@ def get_sdf_dataset(tffiles, batch_size=32, sdf_count=128):
         # Important to use same indices on each in order to align labels properly.
         xyzs = tf.gather(xyzs, ridxs, axis=0)
         labels = tf.reshape(tf.gather(labels, ridxs, axis=0), (sdf_count,1))
-        
+
         return point_clouds, xyzs, labels
 
     dataset = dataset.map(_parse_sdf_function, num_parallel_calls=4)
@@ -82,7 +82,7 @@ def get_point_cloud(view, pc_file):
 def get_voxels(views, voxel_file):
     voxels = list(map(lambda view: np.reshape(get_voxel(view, voxel_file), (1,32,32,32,1)), views))
     return np.concatenate(voxels, axis=0)
-    
+
 def get_voxel(view, voxel_file):
     '''
     Read in the voxel for the request view from the voxel h5 file.
@@ -98,7 +98,7 @@ def get_pcd(view, pcd_database, object_frame=False, verbose=False, unscaled=Fals
     '''
 
     pcd_filename = os.path.join(pcd_database, view + '.pcd')
-    
+
     try:
         point_cloud = pypcd.PointCloud.from_path(pcd_filename)
     except IOError:
@@ -107,7 +107,7 @@ def get_pcd(view, pcd_database, object_frame=False, verbose=False, unscaled=Fals
 
     # Point cloud size.
     # print("PC Size: ", len(point_cloud.pc_data))
-    
+
     # Some objects end up filling whole screen - this is not useful to us.
     if len(point_cloud.pc_data) == 307200:
         return None
@@ -127,7 +127,7 @@ def get_pcd(view, pcd_database, object_frame=False, verbose=False, unscaled=Fals
 if __name__ == '__main__':
     train_folder = '/dataspace/ICRA_Data/ReconstructionData/SDF_CF/Train'
     train_files = [os.path.join(train_folder, filename) for filename in os.listdir(train_folder) if ".tfrecord" in filename]
-    
+
     dataset = get_sdf_dataset(train_files, batch_size=1, sdf_count=1024)
 
     for x, y, z in dataset:
@@ -136,5 +136,5 @@ if __name__ == '__main__':
 
         points_inside = y.numpy()[0][np.where(np.reshape(z.numpy()[0], (-1,)) <= 0)]
         plot_3d_points(points_inside)
-        
+
         visualize_points_overlay([point_cloud_points, points_inside])

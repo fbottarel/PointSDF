@@ -13,7 +13,7 @@ from sdf_dataset import get_sdf_dataset, get_point_clouds, get_voxels
 from helper import get_num_trainable_variables, shuffle_in_unison, get_bn_decay, get_learning_rate
 from visualization import plot_3d_points, plot_voxel, convert_to_sparse_voxel_grid
 
-def run_sdf(get_model, train_path, validation_path, model_path, logs_path, batch_size=32, epoch_start=0, epochs=100, learning_rate=1e-4, optimizer='adam', train=True, warm_start=False, sdf_count=64, voxel=False):
+def run_sdf(get_model, train_path, validation_path, model_path, logs_path, batch_size=32, epoch_start=0, epochs=100, learning_rate=1e-4, optimizer='adam', train=True, warm_start=False, alpha=0.5, loss_function='mse', sdf_count=64):
 
     # Read in training and validation files.
     train_files = [os.path.join(train_path, filename) for filename in os.listdir(train_path) if ".tfrecord" in filename]
@@ -48,7 +48,7 @@ def run_sdf(get_model, train_path, validation_path, model_path, logs_path, batch
     xyz_in = tf.placeholder(tf.float32, name="query_points")
     sdf_labels = tf.placeholder(tf.float32, name="query_labels")
     is_training = tf.placeholder(tf.bool, name="is_training")
-    sdf_prediction, loss, debug = get_model(points, xyz_in, sdf_labels, is_training, bn_decay, batch_size=batch_size)
+    sdf_prediction, loss, debug = get_model(points, xyz_in, sdf_labels, is_training, bn_decay, batch_size=batch_size, alpha=alpha, loss_function=loss_function)
 
     # Get update ops for the BN.
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -92,6 +92,7 @@ def run_sdf(get_model, train_path, validation_path, model_path, logs_path, batch
             # Track loss throughout updates.
             total_loss = 0.0
             examples = 0
+            
             while True:
                 try:
                     # Split the given features into batches.
@@ -114,8 +115,8 @@ def run_sdf(get_model, train_path, validation_path, model_path, logs_path, batch
 
                         plot_3d_points(point_clouds_[0])
                         plot_3d_points(pts)
-                        plot_3d_points(pts, signed_distances=truth)
-                        plot_3d_points(pts, signed_distances=pred)
+                        plot_3d_points(pts, truth)
+                        plot_3d_points(pts, pred)
 
                     total_loss += loss_
 

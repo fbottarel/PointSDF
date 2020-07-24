@@ -99,6 +99,9 @@ def mise_voxel(get_sdf, bound, initial_voxel_resolution, final_voxel_resolution,
                 active_voxels.append([x, y, z])
     active_voxels = np.array(active_voxels)
 
+    # import ipdb; ipdb.set_trace()
+    import time
+
     # Start main loop that ups resolution.
     current_voxel_resolution = initial_voxel_resolution
     while current_voxel_resolution <= final_voxel_resolution:
@@ -117,7 +120,12 @@ def mise_voxel(get_sdf, bound, initial_voxel_resolution, final_voxel_resolution,
         
         # For all points sample SDF given the point cloud.
         for pts_ in pt_splits:
+
+            start = time.time()
+
             sdf_ = get_sdf(pts_)
+
+            print("query lasted for " + str(time.time()-start))
 
             for pt_, sdf in zip(np.reshape(pts_, (-1,3)), np.reshape(sdf_, (-1,))):
                 if sdf <= 0.0:
@@ -207,24 +215,33 @@ def get_test_meshes(grasp_database=True, ycb_database=False):
         
     return fin_meshes
         
+def get_real_pt_cld():
+    real_info = "/home/markvandermerwe/data/GraspTestData/recon_high/mustard_p1_a1/grasp_plan_info.pickle"
+    obj_dict = pickle.load(open(real_info))
+    return obj_dict['scaled_object_cloud'], (obj_dict['max_dim'] * (1.03/1.0)), obj_dict['scale'], [0,0,0]
+
 def mesh_objects(model_func, model_path, save_path, pcd_folder, grasp_database=True):
     # Setup model.
     get_sdf, get_embedding, _ = get_sdf_prediction(model_func, model_path)
 
     # Get names of partial views.
-    meshes = get_test_meshes(grasp_database=grasp_database, ycb_database=(not grasp_database))
+    # meshes = get_test_meshes(grasp_database=grasp_database, ycb_database=(not grasp_database))
+    # meshes = ["mustard_real"]
+    import glob
+    meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
     
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
     initial_voxel_resolution = 32
     # Final voxel resolution.
-    final_voxel_resolution = 512
+    final_voxel_resolution = 128
     
     # Mesh the views.
     for mesh in tqdm(meshes):
         # Point cloud for this view.
-        pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=_OBJECT_FRAME, verbose=False);
+        pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=_OBJECT_FRAME, verbose=False)
+        # pc_, length, scale, centroid_diff = get_real_pt_cld()
         
         voxel_size = (2.*bound * length) / float(final_voxel_resolution)    
         if pc_ is None:
