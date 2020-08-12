@@ -16,7 +16,6 @@ config.gpu_options.per_process_gpu_memory_fraction = 0.2
 sys.path.append(os.environ['POINTCONV_HOME'])
 from PointConv import feature_encoding_layer
 
-#from helper import get_bn_decay
 
 def get_pointconv_model(points, xyz, sdf_label, is_training, bn_decay, batch_size=32, loss_feature='loss'):
     '''
@@ -118,7 +117,7 @@ def get_sdf_model(cloud_embedding, xyz, sdf_label, is_training, bn_decay, batch_
     xyz_in = tf.reshape(xyz, shape=(batch_size, -1, 3))
     sdf_label = tf.reshape(sdf_label, shape=(batch_size, -1, 1)) # This is important.
 
-    with tf.variable_scope('points_embedding'):
+    with tf.variable_scope('points_embedding', reuse=tf.AUTO_REUSE):
         # Embed our input points to some 256 vector.
 
         l1_pts = tf.layers.Dense(512, activation=tf.nn.relu, use_bias=True)(xyz_in)
@@ -127,7 +126,7 @@ def get_sdf_model(cloud_embedding, xyz, sdf_label, is_training, bn_decay, batch_
         pts_embedding = tf.layers.Dense(256, activation=tf.nn.relu, use_bias=True)(l1_pts)
         pts_embedding = tf.layers.dropout(pts_embedding, rate=0.2, training=is_training)
 
-    with tf.variable_scope('sdf'):
+    with tf.variable_scope('sdf', reuse=tf.AUTO_REUSE):
 
         # Combine embeddings. First reshape cloud embeddings to concat with each pt embedding.
         cloud_embedding = tf.tile(tf.expand_dims(cloud_embedding,1), [1, tf.shape(pts_embedding)[1], 1])
@@ -206,9 +205,12 @@ def get_sdf_prediction(get_model, model_path):
     # cloud = tf.placeholder(tf.float32)
     xyz_in = tf.placeholder(tf.float32)    
     sdf_labels = tf.placeholder(tf.float32)
+    pc_embedding = tf.placeholder(tf.float32)
     is_training = tf.placeholder(tf.bool)
 
     sdf_prediction, loss, _ = get_model(points, xyz_in, sdf_labels, is_training, None, batch_size=1)
+
+    sdf_prediction_from_embedding, _, _ = get_sdf_model(pc_embedding, xyz_in, sdf_labels, is_training, None, batch_size=1)
 
     # Save/Restore model.
     saver = tf.train.Saver()
@@ -225,21 +227,29 @@ def get_sdf_prediction(get_model, model_path):
     # Setup function that predicts SDF for (x,y,z) given a point cloud.
     def get_sdf(pt_cloud, query_pts):
         prediction = sess.run(sdf_prediction, feed_dict = {
-            points: pt_cloud, xyz_in: query_pts, sdf_labels: None, is_training: False,
+            points: pt_cloud, xyz_in: query_pts, pc_embedding: None, sdf_labels: None, is_training: False,
         })
         return prediction
 
+    # Setup function that predicts SDF for (x,y,z) given an embedding
+    def get_sdf_from_embedding(cloud_embedding, query_pts):
+        prediction_from_embedding = sess.run(sdf_prediction_from_embedding, feed_dict = {
+            pc_embedding: cloud_embedding, xyz_in: query_pts, sdf_labels: None, is_training: False,
+        })
+        return prediction_from_embedding
+
+    # Setup function that only returns the PC embedding
     def get_embedding(point_cloud):
         cloud_embedding = sess.run(embedding, feed_dict = {
-            points: point_cloud, xyz_in: None, sdf_labels: None, is_training: False,
+            points: point_cloud, xyz_in: None, pc_embedding: None, sdf_labels: None, is_training: False,
         })
         return cloud_embedding
 
+    # Setup function that returns SDF prediction and gradients
     def get_sdf_gradient(pt_cloud, query_pts):
-        # Does both sdf and gradient.
         prediction, gradient = sess.run([sdf_prediction, points_gradient], feed_dict = {
-            points: pt_cloud, xyz_in: query_pts, sdf_labels: None, is_training: False,
+            points: pt_cloud, xyz_in: query_pts, pc_embedding: None, sdf_labels: None, is_training: False,
         })
         return prediction, gradient
 
-    return get_sdf, get_embedding, get_sdf_gradient
+    return get_sdf, get_embedding, get_sdf_gradient, get_sdf_from_embedding

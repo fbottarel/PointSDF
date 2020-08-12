@@ -99,7 +99,6 @@ def mise_voxel(get_sdf, bound, initial_voxel_resolution, final_voxel_resolution,
                 active_voxels.append([x, y, z])
     active_voxels = np.array(active_voxels)
 
-    # import ipdb; ipdb.set_trace()
     import time
 
     # Start main loop that ups resolution.
@@ -222,7 +221,7 @@ def get_real_pt_cld():
 
 def mesh_objects(model_func, model_path, save_path, pcd_folder, grasp_database=True):
     # Setup model.
-    get_sdf, get_embedding, _ = get_sdf_prediction(model_func, model_path)
+    get_sdf, get_embedding, _ , get_sdf_from_embedding = get_sdf_prediction(model_func, model_path)
 
     # Get names of partial views.
     # meshes = get_test_meshes(grasp_database=grasp_database, ycb_database=(not grasp_database))
@@ -233,9 +232,9 @@ def mesh_objects(model_func, model_path, save_path, pcd_folder, grasp_database=T
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
-    initial_voxel_resolution = 32
+    initial_voxel_resolution = 16
     # Final voxel resolution.
-    final_voxel_resolution = 128
+    final_voxel_resolution = 32
     
     # Mesh the views.
     for mesh in tqdm(meshes):
@@ -255,5 +254,52 @@ def mesh_objects(model_func, model_path, save_path, pcd_folder, grasp_database=T
 
         recon_voxel_pts = mise_voxel(get_sdf_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + '.obj'), verbose=False)
     
+def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder, grasp_database=True):
+    
+    # Setup model.
+    get_sdf, get_embedding, _ , get_sdf_from_embedding = get_sdf_prediction(model_func, model_path)
+
+    # Get names of partial views.
+    import glob
+    meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
+    
+    # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
+    bound = 0.8
+    # Starting voxel resolution.
+    initial_voxel_resolution = 16
+    # Final voxel resolution.
+    final_voxel_resolution = 32
+
+    # Mesh the views.
+    for mesh in tqdm(meshes):
+
+        # Point cloud for this view.
+        pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=_OBJECT_FRAME, verbose=False)
+        
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)    
+
+        if pc_ is None:
+            print(view, " has no point cloud.")
+            continue
+        point_clouds_ = np.reshape(pc_, (1,1000,3))
+
+        embedding = get_embedding(point_clouds_)
+
+        embedding_filename = os.path.join(save_path, mesh + '_embedding.npy')
+        np.save(embedding_filename, embedding)
+
+        # Make view specific sdf func.
+        # def get_sdf_query(query_points):
+        #     return get_sdf(point_clouds_, query_points)
+
+        # recon_voxel_pts = mise_voxel(get_sdf_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + '.obj'), verbose=False)
+
+        def get_sdf_embedding_query(query_points):
+            return get_sdf_from_embedding(embedding, query_points)
+
+        recon_voxel_pts = mise_voxel(get_sdf_embedding_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + '.obj'), verbose=False)
+    
+
+
 if __name__ == '__main__':
     mesh_objects(_MODEL_FUNC, _MODEL_PATH, _SAVE_PATH, _PCD_DATABASE, _GRASP_DATABASE)
