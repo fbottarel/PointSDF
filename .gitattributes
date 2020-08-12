@@ -2,3 +2,4 @@ model/ filter=lfs diff=lfs merge=lfs -text
 model/pointconv_full filter=lfs diff=lfs merge=lfs -text
 *model.ckpt* filter=lfs diff=lfs merge=lfs -text
 *checkpoint* filter=lfs diff=lfs merge=lfs -text
+models/reconstruction.tar.gz filter=lfs diff=lfs merge=lfs -text
