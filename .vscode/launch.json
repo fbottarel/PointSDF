@@ -1,0 +1,37 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "hardcoded parameters main",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "main: shape completion",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--mesh", 
+                "--pcd_folder",
+                "/home/fbottarel/workspace/PointSDF/pcs/pointclouds_435/processed_pointclouds",
+                "--model_func",
+                "pointconv", 
+                "--model_name",
+                "pointconv_mse_cf",
+                "--model_path",
+                "/home/fbottarel/workspace/PointSDF/models/reconstruction",
+                "--log_path",
+                "/home/fbottarel/workspace/PointSDF/models/reconstruction/",
+                "--mesh_folder",
+                "meshes/"
+            ]
+        }
+    ]
+}
