@@ -12,8 +12,6 @@ from run_sdf_model import run_sdf
 from run_voxel_model import run_voxel
 from mise import mesh_objects
 
-import pdb
-
 parser = argparse.ArgumentParser(description='Run SDF model.')
 parser.add_argument('--learning_rate', type=float, help='Initial learning rate.', default=1e-5)
 parser.add_argument('--optimizer', type=str, help='Optimizer to use [adam, momentum].', default='adam')
