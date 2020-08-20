@@ -63,6 +63,29 @@ def draw_boxplot(data, edge_color, fill_color, labels, show=True):
 
     return bp
 
+def compute_distance_matrix(data):
+    """Compute distance between every sample and all the others
+
+    Parameters
+    ----------
+    data : [numpy.array], dimension NxD
+        Data matrix. N=number of samples, D=number of features
+
+    Returns
+    -------
+    [numpy.array], dimension NxN
+        L2 Distance matrix. Entry i,j is the distance between i-th and j-th sample 
+    """
+
+    distance_matrix = np.zeros((data.shape[0], data.shape[0]), dtype=float)
+
+    for idx in range(data.shape[0]):
+        for jdx in range(idx, data.shape[0]):
+            distance_matrix[idx, jdx] = np.linalg.norm(data[idx, :] - data[jdx, :])
+    
+    distance_matrix += distance_matrix.transpose()
+
+    return distance_matrix
 
 def add_gaussian_noise(arr_noiseless, noise_mean_vector, noise_cov_matrix):
     """Add gaussian noise to a NxD array
@@ -238,7 +261,7 @@ def mesh_noisy_pc(model_func, model_path, save_path, pcd_folder):
 
             mise_voxel(get_sdf_embedding_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + "_" + str(experiment_idx) + '.obj'), verbose=False)
 
-def compute_dispersion_noise(model_func, model_path, save_path, pcd_folder):
+def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_folder):
     # Load a bunch of undistorted point clouds, disturb each one and measure dispersion properties of their embeddings
 
     dispersion_measures = {}
@@ -265,7 +288,7 @@ def compute_dispersion_noise(model_func, model_path, save_path, pcd_folder):
     noise_cov_matrix = np.eye(3) * noise_sigma_sq
 
     # How many times a single point cloud should be perturbed
-    number_of_experiments = 5
+    number_of_experiments = 1000
 
     for mesh in tqdm(meshes):
 
@@ -350,6 +373,49 @@ def compute_dispersion_noise(model_func, model_path, save_path, pcd_folder):
 
     return dispersion_measures
 
+def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pcd_folder):
+    # Load a bunch of point clouds of objects rendered from different poses with no noise, and compute some measures on their embeddings
+    # Point clouds must have the naming convention [obj_name]_xxxx_pc.pcd where xxxx is the pose index
+
+    # Get names of partial views (no extension)
+    import glob
+    point_cloud_names = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
+  
+    # Setup model
+    _, get_embedding, _ , _ = get_sdf_prediction(model_func, model_path)
+    
+    # Each point cloud will have an associated class in a len(point_cloud_names) long list
+    object_labels = []
+
+    embeddings = np.empty((0, 256))
+
+    for pc_name in tqdm(point_cloud_names):
+
+        # Point cloud for this view.
+        pc, length, scale, centroid_diff = get_pcd(pc_name, pcd_folder, object_frame=False, verbose=False)       
+        if pc is None:
+            print(mesh, " has no point cloud.")
+            continue
+
+        # Embed the pc
+        pc = np.reshape(pc, (1,1000,3))
+        embedding = get_embedding(pc)
+        embeddings = np.append(embeddings, embedding, axis=0)
+
+        # Record pc class
+        object_labels.append[pc_name[:-8]]
+
+    distance_matrx = compute_distance_matrix(embeddings)
+    
+    # TODO from here
+
+    
+
+
+
+
+
+
 
 if __name__ == "__main__":
     
@@ -378,8 +444,11 @@ if __name__ == "__main__":
     #     save_path=os.path.join(mesh_folder, 'meshes_noisy_pc'),
     #     pcd_folder=pcd_folder)
 
-    compute_dispersion_noise(
+    compute_dispersion_single_pose_noise(
         model_func=model_func,
         model_path=model_folder,
         save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
         pcd_folder=pcd_folder)
+
+    
+    
