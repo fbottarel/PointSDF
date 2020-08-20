@@ -10,6 +10,7 @@ import os
 import sys
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # Hardcoded variables, because why not
 pcd_folder = '/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb/processed_pcs'
@@ -25,6 +26,72 @@ model_folder = os.path.join(model_path, model_name)
 os.environ['POINTCONV_HOME'] = '/home/fbottarel/workspace/pointconv'
 sys.path.append(os.environ['POINTCONV_HOME'])
 
+def draw_boxplot(data, edge_color, fill_color, labels, show=True):
+    """[summary]
+
+    Parameters
+    ----------
+    data : [numpy.array], dimension N x D
+        Input data. N is the number of samples for each experiment, D is the number of experiments or classes
+    edge_color : [str]
+        Color for the box and whiskers edges. Color can be chosen between matplotlib.colors.CSS4 colors
+    fill_color : [str]
+        Color for the box and whiskers fill. Color can be chosen between matplotlib.colors.CSS4 colors
+    labels : [list]
+        List of strings of length D. Each string will be the name of a tick
+    show : bool, optional
+        Whether to show the plot or handle it outside this function, by default True
+
+    Returns
+    -------
+    [dict]
+        Returns dictionary for the boxplot
+    """
+    bp = plt.boxplot(data, patch_artist=True, labels=labels, showmeans=True, meanline=True, showfliers=False)
+
+    for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp[element], color=edge_color) 
+
+    for patch in bp['boxes']:
+        patch.set(facecolor=fill_color)    
+
+    plt.xticks(rotation=70)
+    plt.subplots_adjust(bottom=0.3)
+
+    if show:
+        plt.show()
+
+    return bp
+
+
+def add_gaussian_noise(arr_noiseless, noise_mean_vector, noise_cov_matrix):
+    """Add gaussian noise to a NxD array
+
+    Parameters
+    ----------
+    arr_noiseless : [np.array], dimension NxD
+        Array without noise
+    noise_mean_vector : [np.array], dimension 1xD
+        Mean vector for the gaussian noise
+    noise_cov_matrix : [np.array], dimension DxD
+        Covariance matrix for the gaussian noise
+
+    Returns
+    -------
+    [np.array], dimension NxD
+        Array with added noise, same shape as input
+    """
+
+    arr_noiseless = np.reshape(arr_noiseless, arr_noiseless.shape[-2:])
+
+    # Check dimensions
+    if arr_noiseless.shape[-1] != noise_mean_vector.shape[-1] or arr_noiseless.shape[-1] != noise_cov_matrix.shape[-1]:
+        print('Array and noise shape mismatch')
+        return arr_noiseless
+
+    noise_samples = np.random.multivariate_normal(noise_mean_vector, noise_cov_matrix, arr_noiseless.shape[0])
+    return arr_noiseless + noise_samples
+    
 def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
     # Do the same thing as mise.mesh_objects, but extracting and saving the point cloud embedding
 
@@ -171,7 +238,7 @@ def mesh_noisy_pc(model_func, model_path, save_path, pcd_folder):
 
             mise_voxel(get_sdf_embedding_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + "_" + str(experiment_idx) + '.obj'), verbose=False)
 
-def compute_dispersion_noise(model_func, model_path, pcd_folder):
+def compute_dispersion_noise(model_func, model_path, save_path, pcd_folder):
     # Load a bunch of undistorted point clouds, disturb each one and measure dispersion properties of their embeddings
 
     dispersion_measures = {}
@@ -198,7 +265,7 @@ def compute_dispersion_noise(model_func, model_path, pcd_folder):
     noise_cov_matrix = np.eye(3) * noise_sigma_sq
 
     # How many times a single point cloud should be perturbed
-    number_of_experiments = 50
+    number_of_experiments = 5
 
     for mesh in tqdm(meshes):
 
@@ -221,14 +288,7 @@ def compute_dispersion_noise(model_func, model_path, pcd_folder):
         for experiment_idx in range(number_of_experiments):
 
             # Perturb point cloud with additive gaussian noise
-            noise_samples = np.random.multivariate_normal(noise_mean_vector, noise_cov_matrix, pc_.shape[0])
-            noise_samples = np.reshape(noise_samples, (1,1,3))
-
-            if noise_samples.shape[2] != pc_.shape[2]:
-                print(mesh, " dimensions are not compatible with noise sample matrix.")
-                continue
-
-            pc_noisy_ = pc_ + noise_samples
+            pc_noisy_ = add_gaussian_noise(pc_, noise_mean_vector, noise_cov_matrix)
             point_clouds_ = np.reshape(pc_noisy_, (1,1000,3))
 
             # Get embedding and save it
@@ -244,15 +304,51 @@ def compute_dispersion_noise(model_func, model_path, pcd_folder):
 
         # Record results
 
-        dispersion_measures[mesh] = (embeddings_mean, embeddings_variance)
+        dispersion_measures[mesh] = (embeddings_mean, embeddings_variance, embeddings_distance_matrix)
+
+    # Plot dispersion measures
+    pc_names = []
+    x = np.arange(len(dispersion_measures.keys()))
+    y = np.empty(0)
+    variances = np.empty(0)
+    distances = np.empty((number_of_experiments, 0))
+    for pc, measures in dispersion_measures.items():
+        pc_names += [pc]
+        y = np.append(y, measures[0])
+        variances = np.append(variances, measures[1])
+        distances = np.append(distances, measures[2], axis=1)
+    
+    # plt.errorbar(x, y, variances, linestyle='None', marker='o', ecolor='orange')
+    # plt.xticks(x, pc_names, rotation=70)
+    # plt.title(r'Latent space distance from noiseless embedding. Noise $\sigma^2$=' +str(noise_sigma_sq))
+    # plt.subplots_adjust(bottom=0.3)
+
+    # plt.figure()
+
+    # Plot as a boxplot
+    draw_boxplot(distances, edge_color='firebrick', fill_color='silver', labels=pc_names, show=False)
+    plt.title(r'Latent space distance from noiseless embedding. Noise $\sigma^2$=' +str(noise_sigma_sq))
+    # plt.plot(y, linestyle='None', marker='.', color='k')
+
+    # Plot as histograms
+    fig, ax = plt.subplots(3,7, sharey=True)
+    for idx, val in enumerate(pc_names):
+        ax.flat[idx].hist(distances[:, idx], color='b')
+        ax.flat[idx].set_title(pc_names[idx])
+    fig.suptitle(r'Latent space distance from noiseless embedding. Noise $\sigma^2$=' +str(noise_sigma_sq))
+
+    plt.show()
+
+    # Save experiment data to file
+    import pickle
+    save_dir = os.path.join(save_path, 'experiment_data')
+    if not os.path.isdir(save_dir):
+        os.makedirs(save_dir)
+
+    with open(os.path.join(save_dir, 'experiment_data.pickle'), 'wb') as handle:
+        pickle.dump(dispersion_measures, handle, pickle.HIGHEST_PROTOCOL)
 
     return dispersion_measures
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
@@ -285,4 +381,5 @@ if __name__ == "__main__":
     compute_dispersion_noise(
         model_func=model_func,
         model_path=model_folder,
+        save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
         pcd_folder=pcd_folder)
