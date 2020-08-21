@@ -385,6 +385,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
     # Load a bunch of undistorted point clouds, disturb each one and measure dispersion properties of their embeddings
 
     dispersion_measures = {}
+    noiseless_embeddings = np.empty((0,256), float)
 
     # Setup model
     _, get_embedding, _ , _ = get_sdf_prediction(model_func, model_path)
@@ -408,7 +409,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
     noise_cov_matrix = np.eye(3) * noise_sigma_sq
 
     # How many times a single point cloud should be perturbed
-    number_of_experiments = 1000
+    number_of_experiments = 100
 
     for mesh in tqdm(meshes):
 
@@ -427,6 +428,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
         # Embed the noiseless pc
         pc_ = np.reshape(pc_, (1,1000,3))
         embedding_noiseless = get_embedding(pc_)
+        noiseless_embeddings = np.append(noiseless_embeddings, embedding_noiseless, axis=0)
 
         for experiment_idx in range(number_of_experiments):
 
@@ -523,7 +525,7 @@ def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pc
         embeddings = np.append(embeddings, embedding, axis=0)
 
         # Record pc class
-        object_labels.append(pc_name[3:-8])
+        object_labels.append(pc_name[:-8])
 
     distance_matrix = compute_distance_matrix(embeddings)
 
@@ -557,6 +559,7 @@ def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pc
     plt.show()
 
 
+
 if __name__ == "__main__":
     
     # Proceed to complete and mesh point clouds without further ado
@@ -584,17 +587,17 @@ if __name__ == "__main__":
     #     save_path=os.path.join(mesh_folder, 'meshes_noisy_pc'),
     #     pcd_folder=pcd_folder)
 
-    compute_dispersion_single_pose_noise(
-        model_func=model_func,
-        model_path=model_folder,
-        save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
-        pcd_folder=pcd_folder)
-
-    # compute_dispersion_multi_pose_no_noise(
+    # compute_dispersion_single_pose_noise(
     #     model_func=model_func,
     #     model_path=model_folder,
     #     save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
     #     pcd_folder=pcd_folder)
+
+    compute_dispersion_multi_pose_no_noise(
+        model_func=model_func,
+        model_path=model_folder,
+        save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
+        pcd_folder=pcd_folder)
 
     
     
