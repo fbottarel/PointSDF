@@ -5,12 +5,13 @@ from sdf_pointconv_model import get_pointconv_model, get_sdf_model, get_embeddin
 from run_sdf_model import run_sdf
 from mise import *
 
-# Accessory packages 
+# Accessory packages
 import os
 import sys
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import collections
 
 # Hardcoded variables, because why not
 pcd_folder = '/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb/processed_pcs'
@@ -50,10 +51,10 @@ def draw_boxplot(data, edge_color, fill_color, labels, show=True):
     bp = plt.boxplot(data, patch_artist=True, labels=labels, showmeans=True, meanline=True, showfliers=False)
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
-        plt.setp(bp[element], color=edge_color) 
+        plt.setp(bp[element], color=edge_color)
 
     for patch in bp['boxes']:
-        patch.set(facecolor=fill_color)    
+        patch.set(facecolor=fill_color)
 
     plt.xticks(rotation=70)
     plt.subplots_adjust(bottom=0.3)
@@ -151,7 +152,7 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
         the text labels.
     """
 
-    import matplotlib 
+    import matplotlib
 
     if not isinstance(data, (list, np.ndarray)):
         data = im.get_array()
@@ -183,6 +184,44 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
 
     return texts
 
+def heatmap2(data, row_labels, col_labels, ax=None,
+            cbar_kw={}, cbarlabel="", **kwargs):
+
+    if not ax:
+        ax = plt.gca()
+
+    # Plot the heatmap
+    im = ax.imshow(data, **kwargs)
+
+    ax.imshow(data)
+
+    ax.set_xticks(np.arange(data.shape[1]))
+    ax.set_yticks(np.arange(data.shape[0]))
+    ax.set_xticklabels(col_labels)
+    ax.set_yticklabels(row_labels)
+
+    # ax.xaxis.set_ticks_position('bottom')
+    ax.tick_params(top=False, bottom=True,
+                labeltop=False, labelbottom=True)
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+            rotation_mode="anchor")
+    plt.setp(ax.get_yticklabels(), ha="right",
+            rotation_mode="anchor")
+
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            text = ax.text(j, i, '%.1f'%(data[i, j]), ha="center", va="center", color="w")
+
+    ax.set_xticks(np.arange(data.shape[1]+1)-.5, minor=True)
+    ax.set_yticks(np.arange(data.shape[0]+1)-.5, minor=True)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=3)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    ax.set_title('Distance matrix')
+
+    return im
+
 def compute_distance_matrix(data):
     """Compute distance between every sample and all the others
 
@@ -194,7 +233,7 @@ def compute_distance_matrix(data):
     Returns
     -------
     [numpy.array], dimension NxN
-        L2 Distance matrix. Entry i,j is the distance between i-th and j-th sample 
+        L2 Distance matrix. Entry i,j is the distance between i-th and j-th sample
     """
 
     distance_matrix = np.zeros((data.shape[0], data.shape[0]), dtype=float)
@@ -202,7 +241,7 @@ def compute_distance_matrix(data):
     for idx in range(data.shape[0]):
         for jdx in range(idx, data.shape[0]):
             distance_matrix[idx, jdx] = np.linalg.norm(data[idx, :] - data[jdx, :])
-    
+
     distance_matrix += distance_matrix.transpose()
 
     return distance_matrix
@@ -234,7 +273,7 @@ def add_gaussian_noise(arr_noiseless, noise_mean_vector, noise_cov_matrix):
 
     noise_samples = np.random.multivariate_normal(noise_mean_vector, noise_cov_matrix, arr_noiseless.shape[0])
     return arr_noiseless + noise_samples
-    
+
 def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
     # Do the same thing as mise.mesh_objects, but extracting and saving the point cloud embedding
 
@@ -244,7 +283,7 @@ def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
     # Get names of partial views.
     import glob
     meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
-    
+
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
@@ -257,8 +296,8 @@ def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
 
         # Point cloud for this view.
         pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=False, verbose=False)
-        
-        voxel_size = (2.*bound * length) / float(final_voxel_resolution)    
+
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)
 
         if pc_ is None:
             print(mesh, " has no point cloud.")
@@ -276,17 +315,17 @@ def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
         mise_voxel(get_sdf_embedding_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, mesh + '.obj'), verbose=False)
 
     return
-    
+
 def mesh_disturb_embedding(model_func, model_path, save_path, pcd_folder):
     # Load point cloud and embed it, disturb it with gaussian noise and obtain mesh completions based on it
-    
+
     # Setup model
     _, get_embedding, _ , get_sdf_from_embedding = get_sdf_prediction(model_func, model_path)
 
     # Get names of partial views.
     import glob
     meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
-    
+
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
@@ -300,8 +339,8 @@ def mesh_disturb_embedding(model_func, model_path, save_path, pcd_folder):
 
         # Point cloud for this view.
         pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=False, verbose=False)
-        
-        voxel_size = (2.*bound * length) / float(final_voxel_resolution)    
+
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)
 
         if pc_ is None:
             print(mesh, " has no point cloud.")
@@ -330,7 +369,7 @@ def mesh_noisy_pc(model_func, model_path, save_path, pcd_folder):
     # Get names of partial views.
     import glob
     meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
-    
+
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
@@ -352,8 +391,8 @@ def mesh_noisy_pc(model_func, model_path, save_path, pcd_folder):
 
         # Point cloud for this view.
         pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=False, verbose=False)
-        
-        voxel_size = (2.*bound * length) / float(final_voxel_resolution)        
+
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)
 
         if pc_ is None:
             print(mesh, " has no point cloud.")
@@ -383,6 +422,7 @@ def mesh_noisy_pc(model_func, model_path, save_path, pcd_folder):
 
 def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_folder):
     # Load a bunch of undistorted point clouds, disturb each one and measure dispersion properties of their embeddings
+    # As input, one point cloud per object
 
     dispersion_measures = {}
     noiseless_embeddings = np.empty((0,256), float)
@@ -393,7 +433,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
     # Get names of partial views.
     import glob
     meshes = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
-    
+
     # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
     bound = 0.8
     # Starting voxel resolution.
@@ -415,8 +455,8 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
 
         # Point cloud for this view.
         pc_, length, scale, centroid_diff = get_pcd(mesh, pcd_folder, object_frame=False, verbose=False)
-        
-        voxel_size = (2.*bound * length) / float(final_voxel_resolution)        
+
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)
 
         if pc_ is None:
             print(mesh, " has no point cloud.")
@@ -442,7 +482,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
             embeddings[experiment_idx, :] = embedding
 
         # Compute distances between noisy embeddings and non-noisy reference
-        embeddings_distance_matrix = np.linalg.norm(embeddings-embedding_noiseless, axis=1, keepdims=True) 
+        embeddings_distance_matrix = np.linalg.norm(embeddings-embedding_noiseless, axis=1, keepdims=True)
 
         embeddings_mean = np.mean(embeddings_distance_matrix)
         embeddings_variance = np.var(embeddings_distance_matrix)
@@ -462,7 +502,7 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
         y = np.append(y, measures[0])
         variances = np.append(variances, measures[1])
         distances = np.append(distances, measures[2], axis=1)
-    
+
     # plt.errorbar(x, y, variances, linestyle='None', marker='o', ecolor='orange')
     # plt.xticks(x, pc_names, rotation=70)
     # plt.title(r'Latent space distance from noiseless embedding. Noise $\sigma^2$=' +str(noise_sigma_sq))
@@ -495,26 +535,26 @@ def compute_dispersion_single_pose_noise(model_func, model_path, save_path, pcd_
 
     return dispersion_measures
 
-def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pcd_folder):
-    # Load a bunch of point clouds of objects rendered from different poses with no noise, and compute some measures on their embeddings
-    # Point clouds must have the naming convention [obj_name]_xxxx_pc.pcd where xxxx is the pose index
+def compute_dispersion_multi_class_multi_pose_no_noise(model_func, model_path, save_path, pcd_folder):
+    # Load point clouds of different objects rendered from different poses (no noise added), and compute their dispersion wrt their mean embedding
+    # Point clouds must have the naming convention [obj_name]_xxxx_pc.pcd, where [xxxx] stands for the pose
 
     # Get names of partial views (no extension)
     import glob
     point_cloud_names = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
-  
+
     # Setup model
     _, get_embedding, _ , _ = get_sdf_prediction(model_func, model_path)
-    
+
     # Each point cloud will have an associated class in a len(point_cloud_names) long list
     object_labels = []
 
     embeddings = np.empty((0, 256))
 
-    for pc_name in tqdm(point_cloud_names):
+    for pc_name in tqdm(sorted(point_cloud_names)):
 
         # Point cloud for this view.
-        pc, length, scale, centroid_diff = get_pcd(pc_name, pcd_folder, object_frame=False, verbose=False)       
+        pc, length, scale, centroid_diff = get_pcd(pc_name, pcd_folder, object_frame=False, verbose=False)
         if pc is None:
             print(mesh, " has no point cloud.")
             continue
@@ -526,6 +566,138 @@ def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pc
 
         # Record pc class
         object_labels.append(pc_name[:-8])
+
+    # We want all the same objects' embeddings together in order to plot them
+    embeddings_by_class = collections.OrderedDict()
+
+    for idx_label, label  in enumerate(object_labels):
+        if label not in embeddings_by_class.keys():
+            # Create dict entry if not present
+            embeddings_by_class[label] = np.empty((0, 256))
+
+        embeddings_by_class[label] = np.append(embeddings_by_class[label], np.reshape(embeddings[idx_label, :], (1,256)), axis=0)
+
+    # Compute the mean embedding for all the poses wrt the same object
+    # Create a NxD object, where D is the number of classes and N the number of samples per class
+    # Save the mean embedding for each class in a MxF object, where M is the number of classes and F the number of features
+    distances_from_mean = np.empty((embeddings.shape[0]/len(embeddings_by_class.keys()),0), dtype=float)
+    embeddings_means = np.empty((0, 256), float)
+
+    for obj_name, obj_embeddings in embeddings_by_class.items():
+
+        # For every object, compute the mean embedding and distance from the mean embedding of each sample
+        embeddings_mean = np.mean(obj_embeddings, axis=0, keepdims=True)
+        tmp = np.linalg.norm(embeddings_by_class[obj_name]-embeddings_mean, axis=1, keepdims=True)
+        distances_from_mean = np.append(distances_from_mean, tmp, axis=1)
+        embeddings_means = np.append(embeddings_means, embeddings_mean, axis=0)
+
+    # Draw the box plot
+    fig1, ax1 = plt.subplots()
+    draw_boxplot(distances_from_mean, edge_color='firebrick', fill_color='silver', labels=embeddings_by_class.keys(), show=False)
+
+    ax1.set_title("Infra-class distribution with respect to mean embedding")
+    fig1.tight_layout()
+
+    # Draw heatmap of distances
+    inter_class_distance_matrix = compute_distance_matrix(embeddings_means)
+
+    fig2, ax2 = plt.subplots()
+    im, cbar = heatmap(inter_class_distance_matrix,
+                        embeddings_by_class.keys(),
+                        embeddings_by_class.keys(),
+                        ax=ax2,
+                        cmap="YlGn",
+                        cbarlabel="L2 Distance in latent space"
+                        )
+
+    texts = annotate_heatmap(im, valfmt="{x:.1f}")
+
+    ax2.set_title("L2 inter-class latent space distance between the mean mapping of different poses")
+    fig2.tight_layout()
+
+    plt.subplots_adjust(bottom=0.17, right=0.86)
+
+    # plt.show()
+
+    # TODO: DOCUMENT THIS
+    from sklearn import manifold
+    import matplotlib.cm as cm
+
+    tsne = manifold.TSNE(n_components=2, init='pca', random_state=0)
+    X_tsne = tsne.fit_transform(embeddings)
+
+
+    hues = cm.rainbow(np.linspace(0,1, len(embeddings_by_class.keys())))
+    tsne_colors = []
+    tsne_series_name = []
+    for h in hues:
+        tsne_colors += [h]*(embeddings.shape[0]/len(embeddings_by_class.keys()))
+
+    samples_per_class = embeddings.shape[0]/len(embeddings_by_class.keys())
+
+    fig3, ax3 = plt.subplots()
+
+    for idx, h in enumerate(hues):
+        ax3.scatter(X_tsne[idx*samples_per_class:(idx+1)*samples_per_class, 0], X_tsne[idx*samples_per_class:(idx+1)*samples_per_class, 1], color=h, label=embeddings_by_class.keys()[idx], marker=r"${}$".format(idx), s=80)
+
+    ax3.legend()
+    ax3.set_title("t-SNE (2-dimensional) of embedding vectors")
+    plt.show()
+
+
+
+    return
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def compute_inter_class_distance_single_pose_no_noise(model_func, model_path, save_path, pcd_folder):
+    # Load a bunch of point clouds of objects rendered from a single with no noise, and compute some measures on their embeddings
+    # Point clouds must have the naming convention [obj_name]_pc.pcd
+
+    # Get names of partial views (no extension)
+    import glob
+    point_cloud_names = [os.path.splitext(os.path.basename(filename))[0] for filename in glob.glob(pcd_folder + "**/*.pcd")]
+
+    # Setup model
+    _, get_embedding, _ , _ = get_sdf_prediction(model_func, model_path)
+
+    # Each point cloud will have an associated class in a len(point_cloud_names) long list
+    object_labels = []
+
+    embeddings = np.empty((0, 256))
+
+    for pc_name in tqdm(point_cloud_names):
+
+        # Point cloud for this view.
+        pc, length, scale, centroid_diff = get_pcd(pc_name, pcd_folder, object_frame=False, verbose=False)
+        if pc is None:
+            print(mesh, " has no point cloud.")
+            continue
+
+        # Embed the pc
+        pc = np.reshape(pc, (1,1000,3))
+        embedding = get_embedding(pc)
+        embeddings = np.append(embeddings, embedding, axis=0)
+
+        # Record pc class
+        object_labels.append(pc_name[:-7])
 
     distance_matrix = compute_distance_matrix(embeddings)
 
@@ -545,23 +717,21 @@ def compute_dispersion_multi_pose_no_noise(model_func, model_path, save_path, pc
     # for i in range(distance_matrix.shape[0]):
     #     for j in range(distance_matrix.shape[1]):
     #         text = ax.text(j, i, '%.1f'%(distance_matrix[i, j]), ha="center", va="center", color="w")
-    
+
     # ax.set_title('Distance matrix')
-    
+
     fig, ax = plt.subplots()
 
     im, cbar = heatmap(distance_matrix, object_labels, object_labels, ax=ax,  cmap="YlGn", cbarlabel="L2 Distance in latent space")
-    
+
     texts = annotate_heatmap(im, valfmt="{x:.1f}")
 
     ax.set_title('Distance matrix')
     fig.tight_layout()
     plt.show()
 
-
-
 if __name__ == "__main__":
-    
+
     # Proceed to complete and mesh point clouds without further ado
     # mesh_objects(
     #     model_func=model_func,
@@ -591,13 +761,18 @@ if __name__ == "__main__":
     #     model_func=model_func,
     #     model_path=model_folder,
     #     save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
-    #     pcd_folder=pcd_folder)
+    #     pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb/processed_pcs')
 
-    compute_dispersion_multi_pose_no_noise(
+    # compute_inter_class_distance_single_pose_no_noise(
+    #     model_func=model_func,
+    #     model_path=model_folder,
+    #     save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
+    #     pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb/processed_pcs'
+    # )
+
+    compute_dispersion_multi_class_multi_pose_no_noise(
         model_func=model_func,
         model_path=model_folder,
         save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
-        pcd_folder=pcd_folder)
-
-    
-    
+        pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb_multiview/processed_pointclouds'
+    )
