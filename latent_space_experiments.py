@@ -595,8 +595,9 @@ def compute_dispersion_multi_class_multi_pose_no_noise(model_func, model_path, s
     fig1, ax1 = plt.subplots()
     draw_boxplot(distances_from_mean, edge_color='firebrick', fill_color='silver', labels=embeddings_by_class.keys(), show=False)
 
-    ax1.set_title("Infra-class distribution with respect to mean embedding")
+    ax1.set_title("Infra-class distribution of distance with respect to mean embedding")
     fig1.tight_layout()
+    plt.subplots_adjust(bottom=0.2)
 
     # Draw heatmap of distances
     inter_class_distance_matrix = compute_distance_matrix(embeddings_means)
@@ -640,8 +641,9 @@ def compute_dispersion_multi_class_multi_pose_no_noise(model_func, model_path, s
     for idx, h in enumerate(hues):
         ax3.scatter(X_tsne[idx*samples_per_class:(idx+1)*samples_per_class, 0], X_tsne[idx*samples_per_class:(idx+1)*samples_per_class, 1], color=h, label=embeddings_by_class.keys()[idx], marker=r"${}$".format(idx), s=80)
 
-    ax3.legend()
-    ax3.set_title("t-SNE (2-dimensional) of embedding vectors")
+    ax3.legend(loc='upper right', title='Object class', borderaxespad=0.05, bbox_to_anchor=(1.15, 1))
+    ax3.set_title("t-SNE (2-dimensional) representation of embedding vectors")
+    plt.subplots_adjust(left=0.05, right=0.85)
     plt.show()
 
 
