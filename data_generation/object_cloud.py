@@ -37,8 +37,12 @@ def process_object_cloud(obj_cloud, object_frame=False, voxelize=False, verbose=
     return_dict = {}
     
     # Down/Up Sample cloud so everything has the same # of points.
-    idxs = np.random.choice(obj_cloud.shape[0], size=_POINT_CLOUD_SIZE, replace=True)
-    obj_cloud = obj_cloud[idxs,:]
+    if obj_cloud.shape[0] < _POINT_CLOUD_SIZE:
+        idxs = np.random.choice(obj_cloud.shape[0], size=_POINT_CLOUD_SIZE, replace=True)
+        obj_cloud = obj_cloud[idxs,:]
+    elif obj_cloud.shape[0] > _POINT_CLOUD_SIZE:
+        idxs = np.random.choice(obj_cloud.shape[0], size=_POINT_CLOUD_SIZE, replace=False)
+        obj_cloud = obj_cloud[idxs,:]
     
     if object_frame:
         object_transform, centroid = find_object_frame(obj_cloud, verbose)
