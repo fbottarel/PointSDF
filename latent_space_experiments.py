@@ -274,6 +274,145 @@ def add_gaussian_noise(arr_noiseless, noise_mean_vector, noise_cov_matrix):
     noise_samples = np.random.multivariate_normal(noise_mean_vector, noise_cov_matrix, arr_noiseless.shape[0])
     return arr_noiseless + noise_samples
 
+def interpolate_latent_space(model_func, model_path, save_path, pc_start_path, pc_end_path, n_steps):
+
+    # Linearly interpolate latent space representations
+
+    # Setup model
+    _, get_embedding, _ , get_sdf_from_embedding = get_sdf_prediction(model_func, model_path)
+
+    # Load point clouds
+    pcd_dir_start = os.path.dirname(os.path.abspath(pc_start_path))
+    pcd_dir_end = os.path.dirname(os.path.abspath(pc_end_path))
+    
+    pc_start, length, scale, centroid_diff = get_pcd(os.path.splitext(os.path.basename(pc_start_path))[0], 
+                                                pcd_dir_start, 
+                                                object_frame=False, 
+                                                verbose=False)
+
+    pc_end, length, scale, centroid_diff = get_pcd(os.path.splitext(os.path.basename(pc_end_path))[0], 
+                                                pcd_dir_end, 
+                                                object_frame=False, 
+                                                verbose=False)
+
+    # Linearly interpolate embeddings
+    pc_= np.reshape(pc_start, (1,1000,3))
+    embedding_first = get_embedding(pc_)
+    pc_= np.reshape(pc_end, (1,1000,3))
+    embedding_last = get_embedding(pc_)
+
+    steps = np.reshape(np.linspace(0.0, 1.0, n_steps, True), (n_steps, 1))
+    embeddings = np.concatenate( [embedding_first for _ in range(steps.size)], axis=0 ) * (1-steps) + np.concatenate( [embedding_last for _ in range(steps.size)], axis=0) * steps
+
+    # Same thing but shorter lol
+    #embeddings = np.linspace(embedding_first, embedding_last, num=n_steps, endpoint=True)
+
+    # Bounds of 3D space to evaluate in: [-bound, bound] in each dim.
+    bound = 0.8
+    # Starting voxel resolution.
+    initial_voxel_resolution = 16
+    # Final voxel resolution.
+    final_voxel_resolution = 128
+
+    # Mesh the views.
+    for emb_idx in tqdm(range(embeddings.shape[0])):
+
+        # Point cloud for this view.
+
+        voxel_size = (2.*bound * length) / float(final_voxel_resolution)
+
+        embedding = embeddings[emb_idx, :]
+
+        def get_sdf_embedding_query(query_points):
+            return get_sdf_from_embedding(embedding, query_points)
+
+        mise_voxel(get_sdf_embedding_query, bound, initial_voxel_resolution, final_voxel_resolution, voxel_size, centroid_diff, os.path.join(save_path, 'interpolated_mesh_' + str(emb_idx).zfill(3) + '.obj'), verbose=False)
+
+
+    return
+
+# def show_mesh_series(save_path):
+
+#     # Display a series of meshes in the same directory
+
+#     # Show meshes
+#     import trimesh
+#     import trimesh.viewer
+#     import pyglet
+#     import pyrender
+
+#     mesh_names = sorted(os.listdir(save_path))
+#     meshes = [trimesh.load_mesh(os.path.join(save_path, name)) for name in mesh_names]
+
+#     # for i, m in enumerate(meshes):
+#     #     m.apply_translation([0,0, i])
+#     #     m.visual.vertex_colors = trimesh.visual.random_color()
+
+#     mesh_idx = 0
+
+#     scene = trimesh.Scene(meshes[0])
+#     # scene.show()
+
+#     viewer = trimesh.viewer.SceneViewer(scene, start_loop=False)
+
+#     def callback(dt, viewer):
+
+#         if len(scene.geometry) > 0:
+#             idx_mesh = (mesh_names.index(scene.geometry.keys()[0]) + 1) % len(meshes)
+#         else: 
+#             idx_mesh = 0
+
+#         scene.delete_geometry(scene.geometry)
+#         scene.add_geometry(meshes[idx_mesh])
+        
+#         viewer._update_vertex_list()
+
+#         data = scene.save_image(resolution=(1080,1080))
+#         image = np.array(Image.open(io.BytesIO(data))) 
+
+#     pyglet.clock.schedule_interval(callback, 0.1, viewer)
+#     pyglet.app.run()
+
+def show_mesh_series(mesh_path, save_path=None):
+
+    # Show a series of meshes as a sequence, optionally save rendering
+
+    recording = save_path is not None
+    if not recording:
+        print("No save path provided!")
+
+    import trimesh
+    import time
+    import pyrender
+
+    os.environ["PYOPENGL_PLATFORM"] = "egl"
+
+    mesh_names = sorted(os.listdir(mesh_path))
+    meshes = [trimesh.load_mesh(os.path.join(mesh_path, name)) for name in mesh_names]
+    print(mesh_names)
+    idx_mesh = 0
+    first_pass_over = False
+
+    scene = pyrender.Scene()
+    scene.add(pyrender.Mesh.from_trimesh(meshes[idx_mesh], smooth=False), name='obj_mesh')
+    viewer = pyrender.Viewer(scene, use_direct_lighting=True, run_in_thread=True, record=recording)
+
+
+    while viewer.is_active:
+        with viewer.render_lock:
+            idx_mesh = (idx_mesh + 1) % len(meshes)
+            node = list(scene.get_nodes(name='obj_mesh'))[0]
+            scene.remove_node(node)
+            scene.add(pyrender.Mesh.from_trimesh(meshes[idx_mesh], smooth=False), name='obj_mesh')
+        time.sleep(0.1)
+        if recording and idx_mesh == len(meshes) - 1:
+            break
+    viewer.close_external()
+    if recording and save_path:
+        viewer.save_gif(os.path.join(save_path, 'recording.gif'))
+        
+    return
+
 def mesh_objects_two_steps(model_func, model_path, save_path, pcd_folder):
     # Do the same thing as mise.mesh_objects, but extracting and saving the point cloud embedding
 
@@ -567,8 +706,13 @@ def compute_dispersion_multi_class_multi_pose_no_noise(model_func, model_path, s
         # Record pc class
         object_labels.append(pc_name[:-8])
 
+    # Small check: are there any embedding dimensions that are always zero?
+    zero_embedding_columns = np.where(~embeddings.any(axis=0))[0]
+    if zero_embedding_columns.size > 0:
+        print('WARNING: there are {} unused latent dimensions'.format(zero_embedding_columns.size))
+
     # We want all the same objects' embeddings together in order to plot them
-    embeddings_by_class = collections.OrderedDict()
+    embeddings_by_class = collections.OrderedDict() 
 
     for idx_label, label  in enumerate(object_labels):
         if label not in embeddings_by_class.keys():
@@ -646,28 +790,7 @@ def compute_dispersion_multi_class_multi_pose_no_noise(model_func, model_path, s
     plt.subplots_adjust(left=0.05, right=0.85)
     plt.show()
 
-
-
     return
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def compute_inter_class_distance_single_pose_no_noise(model_func, model_path, save_path, pcd_folder):
     # Load a bunch of point clouds of objects rendered from a single with no noise, and compute some measures on their embeddings
