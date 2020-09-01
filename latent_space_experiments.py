@@ -895,9 +895,21 @@ if __name__ == "__main__":
     #     pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb/processed_pcs'
     # )
 
-    compute_dispersion_multi_class_multi_pose_no_noise(
-        model_func=model_func,
-        model_path=model_folder,
-        save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
-        pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb_multiview/processed_pointclouds'
+    # compute_dispersion_multi_class_multi_pose_no_noise(
+    #     model_func=model_func,
+    #     model_path=model_folder,
+    #     save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp',
+    #     pcd_folder='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb_multiview/processed_pointclouds'
+    # )
+
+    # interpolate_latent_space(
+    #     model_func=model_func,
+    #     model_path=model_folder,
+    #     save_path='/home/fbottarel/workspace/PointSDF/latent_space_exp/interpolated_meshes',
+    #     pc_start_path='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb_multiview/processed_pointclouds/024_bowl_0042_pc.pcd',
+    #     pc_end_path='/home/fbottarel/workspace/PointSDF/pcs/rendered_ycb_multiview/processed_pointclouds/024_bowl_0000_pc.pcd',
+    #     n_steps=50
+    # )
+
+    show_mesh_series(mesh_path='/home/fbottarel/workspace/PointSDF/latent_space_exp/interpolated_meshes/bowl_1'
     )
